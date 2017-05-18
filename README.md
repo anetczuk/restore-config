@@ -10,13 +10,13 @@ to allow to connect to the device (e.g. when messing around with /etc/network/in
 after certain amount of time and reboots. If Your configuration is fine after first reboot You can stop rescue procedure by killing the script.
 
 The procedure:
-1. Keep safe configuratin
+1. Keep safe configuration
 2. Configre the script to restore the config
 3. Make changes
 4. Reboot
-5a. When works stop the script before timeout
-5b. When not working then wait for timeout and second reboot
-6. Go to 3.
+5. When works then stop the script before timeout
+6. When not working then wait for timeout and second reboot
+7. Go to 3.
 
 Features of the script:
 - parsing command line arguments,
@@ -33,9 +33,9 @@ Helper script that reboots device after given certain amount of time. It's usefu
 The procedure:
 1. Start the script with desired timeout,
 2. Execute risky commands,
-3a. When still connected then stop the script before timeout,
-3b. When disconnected then wait for reboot.
-4. Go to 1.
+3. When still connected then stop the script before timeout,
+4. When disconnected then wait for reboot.
+5. Go to 1.
 
 Script is an example of following procedures (in Bash):
 - function definition,
