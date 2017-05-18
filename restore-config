@@ -1,0 +1,149 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+# MIT License
+# 
+# Copyright (c) 2017 Arkadiusz Netczuk <dev.arnet@gmail.com>
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+
+
+
+import filecmp
+import argparse
+import time
+import shutil
+import os, os.path, signal
+import subprocess
+import logging
+
+
+parser = argparse.ArgumentParser(description='Restore configuration file.')
+parser.add_argument('--source', action='store', required=True, help="path to file to get content from" )
+parser.add_argument('--target', action='store', required=True, help="path to file to overwrite" )
+parser.add_argument('--wait', action='store', default=0, help="wait before restore [s]" )
+parser.add_argument('--fork', action='store_const', const=True, default=False, help='fork new process after start (usefull e.g. in rc.local)' )
+args = parser.parse_args()
+
+
+logFormat = "%(asctime)-15s %(levelname)-8s %(message)s"
+try:
+    ##logging.basicConfig(level=logging.DEBUG, filename="/var/log/restore.cfg.log", filemode="a+", format=logFormat)
+    logging.basicConfig(level=logging.DEBUG, filename="restore.cfg.log", filemode="a+", format=logFormat)
+except IOError as e:
+    ### log to std out
+    logging.basicConfig(level=logging.DEBUG, format=logFormat)
+    logging.exception("Unable to configure logger")
+
+
+source=args.source
+target=args.target
+
+
+logging.info( "Restoring service started, restoring {} from {}".format( target, source ) )
+
+
+## check if source file exists
+if os.path.isfile(source) == False:
+    logging.info("Could not find source file, exiting")
+    exit(1)
+
+## compare source with target
+if os.path.isfile(target):
+    if filecmp.cmp(source, target) == True:
+	logging.info("Nothing to restore: files are the same, exiting")
+        exit(1)
+
+
+booting = False
+def signalInterrupt(signum, frame):
+    if booting == False:
+	logging.info("Restore interrupted, exiting")
+    exit(1)
+
+## register signals handlers
+signal.signal(signal.SIGINT, signalInterrupt )
+signal.signal(signal.SIGTERM, signalInterrupt )
+
+
+
+## fork if needed
+if args.fork == True:
+    ## fork
+    pid = os.fork()
+    if pid != 0:
+	## parent process -- exit
+	logging.info( "Child process spawned[{}], exiting parent process".format( pid ) )
+	exit(0)
+
+
+## wait before restoring
+timeout=int(args.wait)
+if timeout > 0:
+    logging.info( "Waiting {} seconds before restore".format( timeout ) )
+    time.sleep(timeout)
+
+
+##
+## backup target file
+##
+if os.path.isfile(target):
+    counter = 1
+    while os.path.isfile( target + ".backup." + str(counter) ):
+	#print "couter:", counter
+	counter += 1
+    bckfile = target + ".backup." + str(counter)
+    logging.info( "Storing old configuration to {}".format( bckfile ) )
+    try:
+        shutil.copy(target, bckfile)
+    except IOError as e:
+	logging.exception("Unable to backup old configuration")
+
+
+##logging.info("Status before restoring")
+##logging.info( "ifconfig:\n{}".format( os.popen('ifconfig').read() ) )
+##logging.info( "bridge:\n{}".format( os.popen('brctl show').read() ) )
+##logging.info( "route:\n{}".format( os.popen('route -n').read() ) )
+
+
+
+##
+## proper restoration
+##
+logging.info( "Restoring configuration" )
+try:
+    shutil.copy(source, target)
+except IOError as e:
+    logging.exception("Unable to restore configuration")
+
+
+##
+## done, reboot
+##
+logging.info( "Restoring done, rebooting" )
+command = "sudo -n reboot"
+try:
+    booting = True
+    process = subprocess.Popen(command.split(), stdout=subprocess.PIPE)
+    output = process.communicate()[0]
+    logging.info("output {}".format( output ) )
+except OSError as e:
+    logging.exception("Unable to call command: {}".format(command))
+
